@@ -42,7 +42,7 @@ class GreetingViewModel : ViewModel() {
 fun <R> ViewModel.Ellipse(
     initialValue: R,
     launched: Launched = Launched.Eagerly,
-    vararg flow: EllipseImpl<R>.() -> Flow<*> = emptyArray(),
+    vararg flow: Ellipse<R>.() -> Flow<*> = emptyArray(),
 ): Ellipse<R> = EllipseImpl(
     scope = viewModelScope,
     initialValue = initialValue,
@@ -60,7 +60,7 @@ class EllipseImpl<R>(
     scope: CoroutineScope,
     initialValue: R,
     launched: Launched = Launched.Eagerly,
-    vararg flow: EllipseImpl<R>.() -> Flow<*> = emptyArray(),
+    vararg flow: Ellipse<R>.() -> Flow<*> = emptyArray(),
 ) : Ellipse<R> {
 
     private val _state: MutableStateFlow<R> = MutableStateFlow(initialValue)
