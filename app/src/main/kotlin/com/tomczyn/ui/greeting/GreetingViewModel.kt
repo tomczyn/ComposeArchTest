@@ -24,17 +24,17 @@ class GreetingViewModel : ViewModel() {
     private val fooUseCase = FooUseCase()
     private val barUseCase = BarUseCase()
 
-    private val ellipse = Ellipse(
+    private val _state: MutableStateFlow<GreetingState> = Ellipse(
         initialValue = GreetingState(),
         launched = Launched.WhileSubscribed(stopTimeout = 1_000),
         { fooUseCase().onEachToState { foo, state -> state.copy(foo = foo) } }, // Single extension function example
         { barUseCase().onEach { bar -> state.update { state -> state.copy(bar = bar) } } }, // More standard onEach manual update example
     )
 
-    val state: StateFlow<GreetingState> = ellipse.state
+    val state: StateFlow<GreetingState> = _state
 
     fun updateFoo(foo: String) {
-        ellipse.update { state -> state.copy(foo = foo) }
+        _state.update { state -> state.copy(foo = foo) }
     }
 }
 
@@ -43,7 +43,7 @@ fun <R> ViewModel.Ellipse(
     initialValue: R,
     launched: Launched = Launched.Eagerly,
     vararg flow: Ellipse<R>.() -> Flow<*> = emptyArray(),
-): Ellipse<R> = EllipseImpl(
+): MutableStateFlow<R> = EllipseMutableStateFlow(
     scope = viewModelScope,
     initialValue = initialValue,
     launched = launched,
@@ -55,27 +55,30 @@ interface Ellipse<R> {
     fun <T> Flow<T>.onEachToState(mapper: (T, R) -> R): Flow<T>
 }
 
-inline fun <R> Ellipse<R>.update(transform: (R) -> R) {
-    state.update { state -> transform(state) }
-}
-
-class EllipseImpl<R>(
+class EllipseMutableStateFlow<ST>(
     scope: CoroutineScope,
-    initialValue: R,
+    initialValue: ST,
     launched: Launched = Launched.Eagerly,
-    vararg flow: Ellipse<R>.() -> Flow<*> = emptyArray(),
-) : Ellipse<R> {
+    private val state: MutableStateFlow<ST> = MutableStateFlow(initialValue),
+    vararg flow: Ellipse<ST>.() -> Flow<*> = emptyArray(),
+) : MutableStateFlow<ST> by state {
 
-    override val state: MutableStateFlow<R> = MutableStateFlow(initialValue)
+    private val context: Ellipse<ST> = object : Ellipse<ST> {
+        override val state: MutableStateFlow<ST>
+            get() = this@EllipseMutableStateFlow
+
+        override fun <T> Flow<T>.onEachToState(mapper: (T, ST) -> ST): Flow<T> =
+            onEach { value -> state.update { state -> mapper(value, state) } }
+    }
 
     init {
         when (launched) {
-            Launched.Eagerly -> flow.map { produceFlow -> produceFlow(this@EllipseImpl) }
+            Launched.Eagerly -> flow.map { produceFlow -> produceFlow(context) }
                 .merge()
                 .launchIn(scope)
             Launched.Lazily -> scope.launch {
                 waitForFirstSubscriber()
-                flow.map { produceFlow -> produceFlow(this@EllipseImpl) }
+                flow.map { produceFlow -> produceFlow(context) }
                     .merge()
                     .collect()
             }
@@ -89,7 +92,7 @@ class EllipseImpl<R>(
                     }
                     .flatMapLatest { subscribed ->
                         if (subscribed) {
-                            flow.map { produceFlow -> produceFlow(this@EllipseImpl) }.merge()
+                            flow.map { produceFlow -> produceFlow(context) }.merge()
                         } else {
                             emptyFlow()
                         }
@@ -98,9 +101,6 @@ class EllipseImpl<R>(
             }
         }
     }
-
-    override fun <T> Flow<T>.onEachToState(mapper: (T, R) -> R): Flow<T> =
-        onEach { value -> state.update { state -> mapper(value, state) } }
 
     private suspend fun waitForFirstSubscriber() {
         state.subscriptionCount.first { it > 0 }
