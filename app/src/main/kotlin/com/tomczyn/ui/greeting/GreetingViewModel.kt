@@ -23,6 +23,7 @@ class GreetingViewModel : ViewModel() {
 
     private val fooUseCase = FooUseCase()
     private val barUseCase = BarUseCase()
+
     private val ellipse = Ellipse(
         initialValue = GreetingState(),
         launched = Launched.WhileSubscribed(stopTimeout = 1_000),
@@ -41,59 +42,70 @@ class GreetingViewModel : ViewModel() {
 inline fun <reified R> ViewModel.Ellipse(
     initialValue: R,
     launched: Launched = Launched.Eagerly,
-    vararg flow: Ellipse<R>.() -> Flow<*> = emptyArray(),
-): Ellipse<R> = Ellipse(
+    vararg flow: EllipseImpl<R>.() -> Flow<*> = emptyArray(),
+): Ellipse<R> = EllipseImpl(
     scope = viewModelScope,
     initialValue = initialValue,
     launched = launched,
     flow = flow,
 )
 
-class Ellipse<R>(
+interface Ellipse<R> {
+    val state: StateFlow<R>
+    fun update(transform: (R) -> R)
+    fun <T> Flow<T>.onEachToState(mapper: (T, R) -> R): Flow<T>
+}
+
+class EllipseImpl<R>(
     scope: CoroutineScope,
     initialValue: R,
     launched: Launched = Launched.Eagerly,
-    vararg flow: Ellipse<R>.() -> Flow<*> = emptyArray(),
-) {
+    vararg flow: EllipseImpl<R>.() -> Flow<*> = emptyArray(),
+) : Ellipse<R> {
 
     private val _state: MutableStateFlow<R> = MutableStateFlow(initialValue)
-    val state: StateFlow<R> get() = _state
+    override val state: StateFlow<R> get() = _state
 
     init {
         when (launched) {
-            Launched.Eagerly -> flow.map { produceFlow -> produceFlow(this@Ellipse) }
+            Launched.Eagerly -> flow.map { produceFlow -> produceFlow(this@EllipseImpl) }
                 .merge()
                 .launchIn(scope)
-            Launched.Lazily -> {
-                scope.launch {
-                    _state.subscriptionCount.first { it > 0 }
-                    flow.map { produceFlow -> produceFlow(this@Ellipse) }
-                        .merge()
-                        .collect()
-                }
+            Launched.Lazily -> scope.launch {
+                waitForFirstSubscriber()
+                flow.map { produceFlow -> produceFlow(this@EllipseImpl) }
+                    .merge()
+                    .collect()
             }
-            is Launched.WhileSubscribed -> _state.subscriptionCount
-                .map { it > 0 }
-                .distinctUntilChanged()
-                .onEach { subscribed ->
-                    if (!subscribed) delay(launched.stopTimeout)
-                }
-                .flatMapLatest { subscribed ->
-                    if (subscribed) {
-                        flow.map { produceFlow -> produceFlow(this@Ellipse) }.merge()
-                    } else {
-                        emptyFlow()
+            is Launched.WhileSubscribed -> scope.launch {
+                waitForFirstSubscriber()
+                _state.subscriptionCount
+                    .map { it > 0 }
+                    .distinctUntilChanged()
+                    .onEach { subscribed ->
+                        if (!subscribed) delay(launched.stopTimeout)
                     }
-                }
-                .launchIn(scope)
+                    .flatMapLatest { subscribed ->
+                        if (subscribed) {
+                            flow.map { produceFlow -> produceFlow(this@EllipseImpl) }.merge()
+                        } else {
+                            emptyFlow()
+                        }
+                    }
+                    .collect()
+            }
         }
     }
 
-    fun <T> Flow<T>.onEachToState(mapper: (T, R) -> R): Flow<T> =
+    override fun <T> Flow<T>.onEachToState(mapper: (T, R) -> R): Flow<T> =
         onEach { value -> update { state -> mapper(value, state) } }
 
-    fun update(transform: (R) -> R) {
+    override fun update(transform: (R) -> R) {
         _state.update { state -> transform(state) }
+    }
+
+    private suspend fun waitForFirstSubscriber() {
+        _state.subscriptionCount.first { it > 0 }
     }
 }
 
