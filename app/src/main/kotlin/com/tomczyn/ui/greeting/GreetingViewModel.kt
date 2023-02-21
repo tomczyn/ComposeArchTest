@@ -46,6 +46,7 @@ fun <R> MutableStateFlow<R>.combineToStateIn(
 ): MutableStateFlow<R> = StateFlowWithStateInCombine(
     scope = scope,
     initialValue = value,
+    state = this,
     launched = launched,
     flow = flow,
 )
