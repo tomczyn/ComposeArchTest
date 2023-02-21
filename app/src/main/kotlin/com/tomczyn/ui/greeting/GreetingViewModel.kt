@@ -24,7 +24,7 @@ class GreetingViewModel : ViewModel() {
         initialValue = GreetingState(),
         delaySharing = 1_000,
         { fooUseCase().onEachToState { foo, state -> state.copy(foo = foo) } }, // Single extension function example
-        { barUseCase().onEach { update { state -> state.copy(bar = it) } } }, // More standard onEach manual update example
+        { barUseCase().onEach { bar -> update { state -> state.copy(bar = bar) } } }, // More standard onEach manual update example
     )
 
     val state: StateFlow<GreetingState> = ellipse.state
