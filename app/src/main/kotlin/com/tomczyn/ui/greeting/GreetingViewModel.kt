@@ -39,34 +39,34 @@ class GreetingViewModel : ViewModel() {
     }
 }
 
-fun <R> MutableStateFlow<R>.stateInMerge(
+fun <T> MutableStateFlow<T>.stateInMerge(
     scope: CoroutineScope,
     launched: Launched,
-    vararg flow: StateInMergeContext<R>.() -> Flow<*>,
-): MutableStateFlow<R> = StateFlowWithStateInMerge(
+    vararg flow: StateInMergeContext<T>.() -> Flow<*>,
+): MutableStateFlow<T> = StateFlowWithStateInMerge(
     scope = scope,
     state = this,
     launched = launched,
     flow = flow,
 )
 
-interface StateInMergeContext<R> {
-    val state: MutableStateFlow<R>
-    fun <T> Flow<T>.onEachToState(mapper: (T, R) -> R): Flow<T>
+interface StateInMergeContext<T> {
+    val state: MutableStateFlow<T>
+    fun <R> Flow<R>.onEachToState(mapper: (R, T) -> T): Flow<R>
 }
 
-private class StateFlowWithStateInMerge<ST>(
+private class StateFlowWithStateInMerge<T>(
     scope: CoroutineScope,
     launched: Launched,
-    private val state: MutableStateFlow<ST>,
-    vararg flow: StateInMergeContext<ST>.() -> Flow<*>,
-) : MutableStateFlow<ST> by state {
+    private val state: MutableStateFlow<T>,
+    vararg flow: StateInMergeContext<T>.() -> Flow<*>,
+) : MutableStateFlow<T> by state {
 
-    private val context: StateInMergeContext<ST> = object : StateInMergeContext<ST> {
-        override val state: MutableStateFlow<ST>
+    private val context: StateInMergeContext<T> = object : StateInMergeContext<T> {
+        override val state: MutableStateFlow<T>
             get() = this@StateFlowWithStateInMerge
 
-        override fun <T> Flow<T>.onEachToState(mapper: (T, ST) -> ST): Flow<T> =
+        override fun <R> Flow<R>.onEachToState(mapper: (R, T) -> T): Flow<R> =
             onEach { value -> state.update { state -> mapper(value, state) } }
     }
 
