@@ -27,7 +27,7 @@ class GreetingViewModel : ViewModel() {
     private val _state: MutableStateFlow<GreetingState> = MutableStateFlow(GreetingState())
         .stateInMerge(
             scope = viewModelScope,
-            launched = Launched.WhileSubscribed(stopTimeout = 1_000),
+            launched = Launched.WhileSubscribed(stopTimeoutMillis = 1_000),
             { fooUseCase().onEachToState { foo, state -> state.copy(foo = foo) } }, // Single extension function example
             { barUseCase().onEach { bar -> state.update { state -> state.copy(bar = bar) } } }, // More standard onEach manual update example
         )
@@ -87,7 +87,7 @@ private class StateFlowWithStateInMerge<ST>(
                     .map { it > 0 }
                     .distinctUntilChanged()
                     .onEach { subscribed ->
-                        if (!subscribed) delay(launched.stopTimeout)
+                        if (!subscribed) delay(launched.stopTimeoutMillis)
                     }
                     .flatMapLatest { subscribed ->
                         if (subscribed) {
@@ -108,6 +108,6 @@ private class StateFlowWithStateInMerge<ST>(
 
 sealed interface Launched {
     object Eagerly : Launched
-    data class WhileSubscribed(val stopTimeout: Long = 0L) : Launched
+    data class WhileSubscribed(val stopTimeoutMillis: Long = 0L) : Launched
     object Lazily : Launched
 }
