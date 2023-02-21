@@ -24,22 +24,21 @@ class GreetingViewModel : ViewModel() {
     private val fooUseCase = FooUseCase()
     private val barUseCase = BarUseCase()
 
-    private val _state: MutableStateFlow<GreetingState> = Ellipse(
+    private val _state: MutableStateFlow<GreetingState> = ellipse(
         initialValue = GreetingState(),
         launched = Launched.WhileSubscribed(stopTimeout = 1_000),
         { fooUseCase().onEachToState { foo, state -> state.copy(foo = foo) } }, // Single extension function example
         { barUseCase().onEach { bar -> state.update { state -> state.copy(bar = bar) } } }, // More standard onEach manual update example
     )
 
-    val state: StateFlow<GreetingState> = _state
+    val state: StateFlow<GreetingState> get() = _state
 
     fun updateFoo(foo: String) {
         _state.update { state -> state.copy(foo = foo) }
     }
 }
 
-@Suppress("FunctionName")
-fun <R> ViewModel.Ellipse(
+fun <R> ViewModel.ellipse(
     initialValue: R,
     launched: Launched = Launched.Eagerly,
     vararg flow: Ellipse<R>.() -> Flow<*> = emptyArray(),
