@@ -40,7 +40,7 @@ class GreetingViewModel : ViewModel() {
 @Suppress("FunctionName")
 inline fun <reified R> ViewModel.Ellipse(
     initialValue: R,
-    started: SubscriptionStart,
+    started: SubscriptionStart = SubscriptionStart.Eagerly,
     vararg flow: Ellipse<R>.() -> Flow<*> = emptyArray(),
 ): Ellipse<R> = Ellipse(
     scope = viewModelScope,
@@ -52,7 +52,7 @@ inline fun <reified R> ViewModel.Ellipse(
 class Ellipse<R>(
     scope: CoroutineScope,
     initialValue: R,
-    started: SubscriptionStart,
+    started: SubscriptionStart = SubscriptionStart.Eagerly,
     vararg flow: Ellipse<R>.() -> Flow<*> = emptyArray(),
 ) {
 
