@@ -25,7 +25,7 @@ class GreetingViewModel : ViewModel() {
     private val barUseCase = BarUseCase()
 
     private val _state: MutableStateFlow<GreetingState> = MutableStateFlow(GreetingState())
-        .combineToStateIn(
+        .stateInMerge(
             scope = viewModelScope,
             launched = Launched.WhileSubscribed(stopTimeout = 1_000),
             { fooUseCase().onEachToState { foo, state -> state.copy(foo = foo) } }, // Single extension function example
@@ -39,34 +39,32 @@ class GreetingViewModel : ViewModel() {
     }
 }
 
-fun <R> MutableStateFlow<R>.combineToStateIn(
+fun <R> MutableStateFlow<R>.stateInMerge(
     scope: CoroutineScope,
-    launched: Launched = Launched.Eagerly,
-    vararg flow: StateInCombineContext<R>.() -> Flow<*> = emptyArray(),
-): MutableStateFlow<R> = StateFlowWithStateInCombine(
+    launched: Launched,
+    vararg flow: StateInMergeContext<R>.() -> Flow<*>,
+): MutableStateFlow<R> = StateFlowWithStateInMerge(
     scope = scope,
-    initialValue = value,
     state = this,
     launched = launched,
     flow = flow,
 )
 
-interface StateInCombineContext<R> {
+interface StateInMergeContext<R> {
     val state: MutableStateFlow<R>
     fun <T> Flow<T>.onEachToState(mapper: (T, R) -> R): Flow<T>
 }
 
-class StateFlowWithStateInCombine<ST>(
+private class StateFlowWithStateInMerge<ST>(
     scope: CoroutineScope,
-    initialValue: ST,
-    launched: Launched = Launched.Eagerly,
-    private val state: MutableStateFlow<ST> = MutableStateFlow(initialValue),
-    vararg flow: StateInCombineContext<ST>.() -> Flow<*> = emptyArray(),
+    launched: Launched,
+    private val state: MutableStateFlow<ST>,
+    vararg flow: StateInMergeContext<ST>.() -> Flow<*>,
 ) : MutableStateFlow<ST> by state {
 
-    private val context: StateInCombineContext<ST> = object : StateInCombineContext<ST> {
+    private val context: StateInMergeContext<ST> = object : StateInMergeContext<ST> {
         override val state: MutableStateFlow<ST>
-            get() = this@StateFlowWithStateInCombine
+            get() = this@StateFlowWithStateInMerge
 
         override fun <T> Flow<T>.onEachToState(mapper: (T, ST) -> ST): Flow<T> =
             onEach { value -> state.update { state -> mapper(value, state) } }
