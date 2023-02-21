@@ -42,7 +42,7 @@ class GreetingViewModel : ViewModel() {
 fun <R> MutableStateFlow<R>.combineToStateIn(
     scope: CoroutineScope,
     launched: Launched = Launched.Eagerly,
-    vararg flow: Ellipse<R>.() -> Flow<*> = emptyArray(),
+    vararg flow: StateInCombineContext<R>.() -> Flow<*> = emptyArray(),
 ): MutableStateFlow<R> = StateFlowWithStateInCombine(
     scope = scope,
     initialValue = value,
@@ -50,7 +50,7 @@ fun <R> MutableStateFlow<R>.combineToStateIn(
     flow = flow,
 )
 
-interface Ellipse<R> {
+interface StateInCombineContext<R> {
     val state: MutableStateFlow<R>
     fun <T> Flow<T>.onEachToState(mapper: (T, R) -> R): Flow<T>
 }
@@ -60,10 +60,10 @@ class StateFlowWithStateInCombine<ST>(
     initialValue: ST,
     launched: Launched = Launched.Eagerly,
     private val state: MutableStateFlow<ST> = MutableStateFlow(initialValue),
-    vararg flow: Ellipse<ST>.() -> Flow<*> = emptyArray(),
+    vararg flow: StateInCombineContext<ST>.() -> Flow<*> = emptyArray(),
 ) : MutableStateFlow<ST> by state {
 
-    private val context: Ellipse<ST> = object : Ellipse<ST> {
+    private val context: StateInCombineContext<ST> = object : StateInCombineContext<ST> {
         override val state: MutableStateFlow<ST>
             get() = this@StateFlowWithStateInCombine
 
