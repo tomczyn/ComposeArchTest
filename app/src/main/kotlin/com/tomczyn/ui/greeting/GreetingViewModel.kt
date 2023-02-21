@@ -39,7 +39,7 @@ class GreetingViewModel : ViewModel() {
 }
 
 @Suppress("FunctionName")
-inline fun <reified R> ViewModel.Ellipse(
+fun <R> ViewModel.Ellipse(
     initialValue: R,
     launched: Launched = Launched.Eagerly,
     vararg flow: EllipseImpl<R>.() -> Flow<*> = emptyArray(),
