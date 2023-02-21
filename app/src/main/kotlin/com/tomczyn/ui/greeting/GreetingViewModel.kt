@@ -25,7 +25,7 @@ class GreetingViewModel : ViewModel() {
     private val barUseCase = BarUseCase()
 
     private val _state: MutableStateFlow<GreetingState> = MutableStateFlow(GreetingState())
-        .combineToState(
+        .combineToStateIn(
             scope = viewModelScope,
             launched = Launched.WhileSubscribed(stopTimeout = 1_000),
             { fooUseCase().onEachToState { foo, state -> state.copy(foo = foo) } }, // Single extension function example
@@ -39,7 +39,7 @@ class GreetingViewModel : ViewModel() {
     }
 }
 
-fun <R> MutableStateFlow<R>.combineToState(
+fun <R> MutableStateFlow<R>.combineToStateIn(
     scope: CoroutineScope,
     launched: Launched = Launched.Eagerly,
     vararg flow: Ellipse<R>.() -> Flow<*> = emptyArray(),
