@@ -25,7 +25,7 @@ class GreetingViewModel : ViewModel() {
     private val barUseCase = BarUseCase()
     private val ellipse = Ellipse(
         initialValue = GreetingState(),
-        started = SubscriptionStart.WhileSubscribed(stopTimeout = 1_000),
+        launched = Launched.WhileSubscribed(stopTimeout = 1_000),
         { fooUseCase().onEachToState { foo, state -> state.copy(foo = foo) } }, // Single extension function example
         { barUseCase().onEach { bar -> update { state -> state.copy(bar = bar) } } }, // More standard onEach manual update example
     )
@@ -40,19 +40,19 @@ class GreetingViewModel : ViewModel() {
 @Suppress("FunctionName")
 inline fun <reified R> ViewModel.Ellipse(
     initialValue: R,
-    started: SubscriptionStart = SubscriptionStart.Eagerly,
+    launched: Launched = Launched.Eagerly,
     vararg flow: Ellipse<R>.() -> Flow<*> = emptyArray(),
 ): Ellipse<R> = Ellipse(
     scope = viewModelScope,
     initialValue = initialValue,
-    started = started,
+    launched = launched,
     flow = flow,
 )
 
 class Ellipse<R>(
     scope: CoroutineScope,
     initialValue: R,
-    started: SubscriptionStart = SubscriptionStart.Eagerly,
+    launched: Launched = Launched.Eagerly,
     vararg flow: Ellipse<R>.() -> Flow<*> = emptyArray(),
 ) {
 
@@ -60,11 +60,11 @@ class Ellipse<R>(
     val state: StateFlow<R> get() = _state
 
     init {
-        when (started) {
-            SubscriptionStart.Eagerly -> flow.map { produceFlow -> produceFlow(this@Ellipse) }
+        when (launched) {
+            Launched.Eagerly -> flow.map { produceFlow -> produceFlow(this@Ellipse) }
                 .merge()
                 .launchIn(scope)
-            SubscriptionStart.Lazily -> {
+            Launched.Lazily -> {
                 scope.launch {
                     _state.subscriptionCount.first { it > 0 }
                     flow.map { produceFlow -> produceFlow(this@Ellipse) }
@@ -72,11 +72,11 @@ class Ellipse<R>(
                         .collect()
                 }
             }
-            is SubscriptionStart.WhileSubscribed -> _state.subscriptionCount
+            is Launched.WhileSubscribed -> _state.subscriptionCount
                 .map { it > 0 }
                 .distinctUntilChanged()
                 .onEach { subscribed ->
-                    if (!subscribed) delay(started.stopTimeout)
+                    if (!subscribed) delay(launched.stopTimeout)
                 }
                 .flatMapLatest { subscribed ->
                     if (subscribed) {
@@ -98,8 +98,8 @@ class Ellipse<R>(
 }
 
 
-sealed interface SubscriptionStart {
-    object Eagerly : SubscriptionStart
-    data class WhileSubscribed(val stopTimeout: Long = 0L) : SubscriptionStart
-    object Lazily : SubscriptionStart
+sealed interface Launched {
+    object Eagerly : Launched
+    data class WhileSubscribed(val stopTimeout: Long = 0L) : Launched
+    object Lazily : Launched
 }
