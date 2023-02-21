@@ -6,15 +6,21 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 class GreetingViewModel : ViewModel() {
 
@@ -22,7 +28,7 @@ class GreetingViewModel : ViewModel() {
     private val barUseCase = BarUseCase()
     private val ellipse = Ellipse(
         initialValue = GreetingState(),
-        delaySharing = 1_000,
+        started = SubscriptionStart.WhileSubscribed(stopTimeout = 1_000),
         { fooUseCase().onEachToState { foo, state -> state.copy(foo = foo) } }, // Single extension function example
         { barUseCase().onEach { bar -> update { state -> state.copy(bar = bar) } } }, // More standard onEach manual update example
     )
@@ -30,6 +36,7 @@ class GreetingViewModel : ViewModel() {
     val state: StateFlow<GreetingState> = ellipse.state
 
     fun updateFoo(foo: String) {
+        flowOf(0).stateIn(viewModelScope, SharingStarted.Eagerly, 0)
         ellipse.update { state -> state.copy(foo = foo) }
     }
 }
@@ -37,19 +44,19 @@ class GreetingViewModel : ViewModel() {
 @Suppress("FunctionName")
 inline fun <reified R> ViewModel.Ellipse(
     initialValue: R,
-    delaySharing: Long = 0L,
+    started: SubscriptionStart,
     vararg flow: Ellipse<R>.() -> Flow<*> = emptyArray(),
 ): Ellipse<R> = Ellipse(
     scope = viewModelScope,
     initialValue = initialValue,
-    delaySharing = delaySharing,
+    started = started,
     flow = flow,
 )
 
 class Ellipse<R>(
     scope: CoroutineScope,
     initialValue: R,
-    delaySharing: Long = 0.toLong(),
+    started: SubscriptionStart,
     vararg flow: Ellipse<R>.() -> Flow<*> = emptyArray(),
 ) {
 
@@ -57,18 +64,33 @@ class Ellipse<R>(
     val state: StateFlow<R> get() = _state
 
     init {
-        _state.subscriptionCount
-            .map { it > 0 }
-            .distinctUntilChanged()
-            .onEach { subscribed -> if (!subscribed && delaySharing > 0L) delay(delaySharing) }
-            .flatMapLatest { subscribed ->
-                if (subscribed) {
-                    flow.map { produceFlow -> produceFlow(this) }.merge()
-                } else {
-                    emptyFlow()
+        when (started) {
+            SubscriptionStart.Eagerly -> flow.map { produceFlow -> produceFlow(this@Ellipse) }
+                .merge()
+                .launchIn(scope)
+            SubscriptionStart.Lazily -> {
+                scope.launch {
+                    _state.subscriptionCount.first { it > 0 }
+                    flow.map { produceFlow -> produceFlow(this@Ellipse) }
+                        .merge()
+                        .collect()
                 }
             }
-            .launchIn(scope)
+            is SubscriptionStart.WhileSubscribed -> _state.subscriptionCount
+                .map { it > 0 }
+                .distinctUntilChanged()
+                .onEach { subscribed ->
+                    if (!subscribed) delay(started.stopTimeout)
+                }
+                .flatMapLatest { subscribed ->
+                    if (subscribed) {
+                        flow.map { produceFlow -> produceFlow(this@Ellipse) }.merge()
+                    } else {
+                        emptyFlow()
+                    }
+                }
+                .launchIn(scope)
+        }
     }
 
     fun <T> Flow<T>.onEachToState(mapper: (T, R) -> R): Flow<T> =
@@ -77,4 +99,11 @@ class Ellipse<R>(
     fun update(transform: (R) -> R) {
         _state.update { state -> transform(state) }
     }
+}
+
+
+sealed interface SubscriptionStart {
+    object Eagerly : SubscriptionStart
+    data class WhileSubscribed(val stopTimeout: Long = 0L) : SubscriptionStart
+    object Lazily : SubscriptionStart
 }
