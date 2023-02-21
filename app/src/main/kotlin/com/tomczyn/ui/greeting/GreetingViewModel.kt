@@ -24,12 +24,13 @@ class GreetingViewModel : ViewModel() {
     private val fooUseCase = FooUseCase()
     private val barUseCase = BarUseCase()
 
-    private val _state: MutableStateFlow<GreetingState> = ellipse(
-        initialValue = GreetingState(),
-        launched = Launched.WhileSubscribed(stopTimeout = 1_000),
-        { fooUseCase().onEachToState { foo, state -> state.copy(foo = foo) } }, // Single extension function example
-        { barUseCase().onEach { bar -> state.update { state -> state.copy(bar = bar) } } }, // More standard onEach manual update example
-    )
+    private val _state: MutableStateFlow<GreetingState> = MutableStateFlow(GreetingState())
+        .combineToState(
+            scope = viewModelScope,
+            launched = Launched.WhileSubscribed(stopTimeout = 1_000),
+            { fooUseCase().onEachToState { foo, state -> state.copy(foo = foo) } }, // Single extension function example
+            { barUseCase().onEach { bar -> state.update { state -> state.copy(bar = bar) } } }, // More standard onEach manual update example
+        )
 
     val state: StateFlow<GreetingState> get() = _state
 
@@ -38,13 +39,13 @@ class GreetingViewModel : ViewModel() {
     }
 }
 
-fun <R> ViewModel.ellipse(
-    initialValue: R,
+fun <R> MutableStateFlow<R>.combineToState(
+    scope: CoroutineScope,
     launched: Launched = Launched.Eagerly,
     vararg flow: Ellipse<R>.() -> Flow<*> = emptyArray(),
-): MutableStateFlow<R> = EllipseMutableStateFlow(
-    scope = viewModelScope,
-    initialValue = initialValue,
+): MutableStateFlow<R> = StateFlowWithStateInCombine(
+    scope = scope,
+    initialValue = value,
     launched = launched,
     flow = flow,
 )
@@ -54,7 +55,7 @@ interface Ellipse<R> {
     fun <T> Flow<T>.onEachToState(mapper: (T, R) -> R): Flow<T>
 }
 
-class EllipseMutableStateFlow<ST>(
+class StateFlowWithStateInCombine<ST>(
     scope: CoroutineScope,
     initialValue: ST,
     launched: Launched = Launched.Eagerly,
@@ -64,7 +65,7 @@ class EllipseMutableStateFlow<ST>(
 
     private val context: Ellipse<ST> = object : Ellipse<ST> {
         override val state: MutableStateFlow<ST>
-            get() = this@EllipseMutableStateFlow
+            get() = this@StateFlowWithStateInCombine
 
         override fun <T> Flow<T>.onEachToState(mapper: (T, ST) -> ST): Flow<T> =
             onEach { value -> state.update { state -> mapper(value, state) } }
