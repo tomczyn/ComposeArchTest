@@ -28,7 +28,7 @@ class GreetingViewModel : ViewModel() {
         initialValue = GreetingState(),
         launched = Launched.WhileSubscribed(stopTimeout = 1_000),
         { fooUseCase().onEachToState { foo, state -> state.copy(foo = foo) } }, // Single extension function example
-        { barUseCase().onEach { bar -> update { state -> state.copy(bar = bar) } } }, // More standard onEach manual update example
+        { barUseCase().onEach { bar -> state.update { state -> state.copy(bar = bar) } } }, // More standard onEach manual update example
     )
 
     val state: StateFlow<GreetingState> = ellipse.state
@@ -51,9 +51,12 @@ fun <R> ViewModel.Ellipse(
 )
 
 interface Ellipse<R> {
-    val state: StateFlow<R>
-    fun update(transform: (R) -> R)
+    val state: MutableStateFlow<R>
     fun <T> Flow<T>.onEachToState(mapper: (T, R) -> R): Flow<T>
+}
+
+inline fun <R> Ellipse<R>.update(transform: (R) -> R) {
+    state.update { state -> transform(state) }
 }
 
 class EllipseImpl<R>(
@@ -63,8 +66,7 @@ class EllipseImpl<R>(
     vararg flow: Ellipse<R>.() -> Flow<*> = emptyArray(),
 ) : Ellipse<R> {
 
-    private val _state: MutableStateFlow<R> = MutableStateFlow(initialValue)
-    override val state: StateFlow<R> get() = _state
+    override val state: MutableStateFlow<R> = MutableStateFlow(initialValue)
 
     init {
         when (launched) {
@@ -79,7 +81,7 @@ class EllipseImpl<R>(
             }
             is Launched.WhileSubscribed -> scope.launch {
                 waitForFirstSubscriber()
-                _state.subscriptionCount
+                state.subscriptionCount
                     .map { it > 0 }
                     .distinctUntilChanged()
                     .onEach { subscribed ->
@@ -98,17 +100,12 @@ class EllipseImpl<R>(
     }
 
     override fun <T> Flow<T>.onEachToState(mapper: (T, R) -> R): Flow<T> =
-        onEach { value -> update { state -> mapper(value, state) } }
-
-    override fun update(transform: (R) -> R) {
-        _state.update { state -> transform(state) }
-    }
+        onEach { value -> state.update { state -> mapper(value, state) } }
 
     private suspend fun waitForFirstSubscriber() {
-        _state.subscriptionCount.first { it > 0 }
+        state.subscriptionCount.first { it > 0 }
     }
 }
-
 
 sealed interface Launched {
     object Eagerly : Launched
